@@ -1,6 +1,13 @@
 # scraper.rb
 # Extract and present data from the Seattle food truck website
 # Parse JSON into some useful information
+# Key Features
+#
+# Display food truck info in Bellevue:Barnes and Nobel
+# Able to provide food truck info on current day
+# Able to provide food truck info on a specific day as specified by a user
+# Information of food truck should be easy to read
+#
 # Author: Jonathan Ho
 
 #!/usr/bin/ruby
@@ -14,13 +21,14 @@ require 'time'
 require './restaurant.rb'
 
 # GLOBAL VARIABLES
-$imagehost = 'https://s3-us-west-2.amazonaws.com/seattlefoodtruck-uploads-prod/'
+$IMAGE_HOST = 'https://s3-us-west-2.amazonaws.com/seattlefoodtruck-uploads-prod/'
+$API_HOST = 'https://www.seattlefoodtruck.com/api'
 
 # Returns Location ID from user input location
 def getLocationID
     puts "Enter a neighborhood name"
-    neighborhood = gets
-    url = 'https://www.seattlefoodtruck.com/api/locations?include_events=true&include_trucks=true&only_with_events=true&with_active_trucks=true&neighborhood=' + neighborhood + '&with_events_on_day=' + Date.today.strftime("%Y-%m-%d") + 'T12%3A00%3A00-07%3A00'
+    neighborhood = gets.downcase
+    url = $API_HOST + '/locations?include_events=true&include_trucks=true&only_with_events=true&with_active_trucks=true&neighborhood=' + neighborhood + '&with_events_on_day=' + Date.today.strftime("%Y-%m-%d") + 'T12%3A00%3A00-07%3A00'
     json = open(url).read
     objs = JSON.parse(json)
 
@@ -37,21 +45,19 @@ end
 
 # Returns total number of pages using locationID
 def getTotalPages(locationID)
-    puts "here #{locationID}"
-    url = 'https://www.seattlefoodtruck.com/api/events?page=1&for_locations=' + locationID.to_s + '&with_active_trucks=true&include_bookings=true&with_booking_status=approved'
+    url = $API_HOST + '/events?page=1&for_locations=' + locationID.to_s + '&with_active_trucks=true&include_bookings=true&with_booking_status=approved'
     json = open(url).read
     objs = JSON.parse(json)
     totalpages = objs["pagination"]["total_pages"]
 end
 
 # print out all results using locationID
-def getResults(locationID)
-    page = 0
+def getResults(locationID, total)
+    page = 1
     bookings = Hash.new([])
-    total = getTotalPages(locationID)
+    
     begin 
-        url = 'https://www.seattlefoodtruck.com/api/events?page=' + page.to_s + '&for_locations=' + locationID.to_s + '&with_active_trucks=true&include_bookings=true&with_booking_status=approved'
-        #puts url
+        url = $API_HOST + '/events?page=' + page.to_s + '&for_locations=' + locationID.to_s + '&with_active_trucks=true&include_bookings=true&with_booking_status=approved'
         json = open(url).read
         objs = JSON.parse(json)
 
@@ -60,23 +66,27 @@ def getResults(locationID)
             #puts "\n"
             #totalcount -= 1
 
-            list = Array.new;
+            list = Array.new
             # parse restaurants in the booking
             obj["bookings"].each do |item|
                 name =  item["truck"]["name"]
                 arr =  item["truck"]["food_categories"]
-                photo = $imagehost.to_s + item["truck"]["featured_photo"].to_s
-                r1 = Restaurant.new(name, arr, photo)
-                list.push(r1);
+                photo = $IMAGE_HOST + item["truck"]["featured_photo"].to_s
+                id = item["truck"]["id"]
+                r1 = Foodtruck.new(name, arr, photo, id)
+                list.push(r1)
             end
             bookings[time] = list
         end
+        puts "Getting data ... #{page}/#{total}"
         page += 1
     #end while page <= 1
     end while page <= total
 
-    printRecords(bookings)
+    return bookings
 end
+
+
 
 # print records
 def printRecords(bookings)
@@ -86,9 +96,52 @@ def printRecords(bookings)
     end
 end
 
+# returns food truck info on current day
+def todaysMenu(bookings)
+    puts "#{bookings[Date.today.strftime("%Y-%m-%d")]}"
+end
+
+# returns food truck info on current day
+def futureMenu(bookings, date)
+    if date < Date.today
+        return "Unable to return past entries"
+    else
+        return "#{bookings[date.strftime("%Y-%m-%d")]}"
+    end
+end
+
+def search(bookings, phrase)
+    bookings.each do |key, value|
+        #puts value[0]
+        #puts "inspect #{value}"
+        value.each do |item|
+            puts item.getName()
+            menu = item.getMenu()
+                menu.each do |dish|
+                    #puts dish["name"]
+                    #puts dish["description"]
+                    
+                end
+            puts "\n"
+        end
+      end
+end
+
 # main method
 locationID = getLocationID()
-getResults(locationID)
+#total = getTotalPages(locationID)
+bookings = getResults(locationID, 1)
+#printRecords(bookings)
+
+search(bookings, "pasta")
+
+#puts "todays menu"
+#todaysMenu(bookings)
+#puts "yesterday's menu"
+#puts futureMenu(bookings, Date.today - 1)
+#puts "tomorrow's menu"
+#puts futureMenu(bookings, Date.today + 1)
+
 
 # unit test
 # totalcount should be zero
